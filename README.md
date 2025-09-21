@@ -31,21 +31,70 @@ GoldenGuard atua como um “painel financeiro” de conscientização e prevenç
 ## 1) Arquitetura & pastas
 
 ```
-GoldenGuard.sln
+GoldenGuard/
+├─ GoldenGuard.WebApi/                     # Projeto Web API (ASP.NET Core Minimal API)
+│  ├─ Program.cs
+│  ├─ appsettings.json                     # JWT, logs etc. (sem credenciais no repo)
+│  ├─ Properties/
+│  │  └─ launchSettings.json               # portas/URLs de desenvolvimento
+│  ├─ Data/
+│  │  ├─ OracleConnectionFactory.cs        # fábrica de conexões (ODP.NET + BindByName)
+│  │  └─ Scripts.sql                       # DDL/DML para criar e popular o Oracle
+│  ├─ Domain/
+│  │  ├─ Entities/
+│  │  │  ├─ UserProfile.cs
+│  │  │  └─ Transaction.cs
+│  │  └─ DTOs/
+│  │     ├─ CreateUserDto.cs
+│  │     ├─ UpdateUserDto.cs
+│  │     ├─ CreateTransactionDto.cs
+│  │     └─ UpdateTransactionDto.cs
+│  ├─ Infrastructure/
+│  │  └─ Repositories/
+│  │     ├─ IUserRepository.cs
+│  │     ├─ ITransactionRepository.cs
+│  │     ├─ UserRepository.cs              # Dapper + aliases (MONTHLY_INCOME AS MonthlyIncome)
+│  │     └─ TransactionRepository.cs
+│  ├─ Application/
+│  │  └─ Services/
+│  │     ├─ TransactionService.cs          # KPI de risco, agregações de domínio
+│  │     └─ FileStorageService.cs          # JSON/TXT (auditoria, snapshots)
+│  ├─ Endpoints/
+│  │  ├─ AuthEndpoints.cs                  # /api/auth/login (JWT, roles)
+│  │  ├─ UsersEndpoints.cs                 # /api/users (CRUD)
+│  │  └─ TransactionsEndpoints.cs          # /api/transactions (+ import/export/stats)
+│  └─ Files/                               # Saída em runtime (gitignore)
+│     ├─ transactions.json
+│     └─ audit.log
 │
-├─ GoldenGuard/                     # Web API (Minimal API) 
-│  ├─ Endpoints/                    # Endpoints (Auth, Users, Transactions)
-│  ├─ Data/                         # OracleConnectionFactory, Scripts SQL (DDL/DML)
-│  └─ appsettings.json              # JWT, etc. (sem credenciais do Oracle)
+├─ GoldenGuard.WebApp/                     # Frontend (Razor Pages)
+│  ├─ Program.cs
+│  ├─ appsettings.json                     # Api:BaseUrl (ex.: https://localhost:7170)
+│  ├─ Properties/
+│  │  └─ launchSettings.json               # porta/URL do WebApp
+│  ├─ Services/
+│  │  └─ ApiClient.cs                      # HttpClient + cookies gg.jwt/gg.role/gg.userId
+│  ├─ Pages/
+│  │  ├─ _ViewImports.cshtml
+│  │  ├─ _ViewStart.cshtml
+│  │  ├─ Shared/_Layout.cshtml             # Navbar (login/logout, papel)
+│  │  ├─ Index.cshtml                      # Dashboard (Chart.js + KPI)
+│  │  ├─ Index.cshtml.cs
+│  │  ├─ Auth/
+│  │  │  ├─ Login.cshtml                   # Login (define cookies)
+│  │  │  └─ Login.cshtml.cs
+│  │  ├─ Users/
+│  │  │  ├─ Index.cshtml                   # Listar/Excluir usuários (admin)
+│  │  │  ├─ Index.cshtml.cs
+│  │  │  ├─ Create.cshtml                  # Criar usuário (admin)
+│  │  │  └─ Create.cshtml.cs
+│  │  └─ Transactions/
+│  │     ├─ ByUser.cshtml                  # Lista por usuário + filtro período
+│  │     └─ ByUser.cshtml.cs               # Criação rápida (admin)
+│  └─ wwwroot/
+│     └─ css/site.css
 │
-├─ GoldenGuard.WebApp/              # Razor Pages (UI)
-│  ├─ Pages/                        # Index, Auth, Users, Transactions
-│  ├─ Services/                     # ApiClient (HttpClient + JWT dos cookies)
-│  └─ appsettings.json              # Api:BaseUrl (ex.: https://localhost:7170)
-│
-├─ GoldenGuard.Domain/              # Entidades + DTOs
-├─ GoldenGuard.Infrastructure/      # Repositórios (Dapper)
-└─ GoldenGuard.Application/         # Serviços de domínio (ex.: TransactionService)
+└─ GoldenGuard.sln                         # Solução (ambos os projetos)
 ```
 
 **Stack**
