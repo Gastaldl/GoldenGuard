@@ -12,7 +12,6 @@ O sistema entrega:
 
 ## 0) Visão — Solução & Aplicabilidade no Projeto
 
-**Ideia**
 GoldenGuard atua como um “painel financeiro” de conscientização e prevenção. Ele centraliza transações por usuário, identifica concentração de gastos ligados a apostas e calcula um **índice de risco mensal** comparando o total movimentado com a **renda declarada**.
 
 **Aplicabilidade prática**
