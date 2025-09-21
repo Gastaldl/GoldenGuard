@@ -1,12 +1,30 @@
 # GoldenGuard — Web API + WebApp (.NET 8, Oracle, JWT)
 
-**GoldenGuard** é uma solução voltada à **educação financeira e prevenção** de risco, com foco em monitorar e analisar movimentações (depósitos/saques) de sites de aposta/fintechs.
-O sistema possui:
+**GoldenGuard** é uma solução de **educação financeira e prevenção de risco**, voltada a monitorar e analisar movimentações (depósitos/saques) associadas a plataformas de aposta/fintechs.
+O sistema entrega:
 
 * **API** em ASP.NET Core (Minimal API) com **JWT** e papéis (**admin/usuário**).
-* **WebApp** em Razor Pages (Bootstrap/Chart.js), com login e UI sensível a papel.
-* **Oracle** como banco (Dapper), **importação/exportação JSON** e **gráfico mensal** de depósitos × saques.
-* **KPI de risco mensal** (gastos do mês / renda mensal) e destaque quando acima de 30%.
+* **WebApp** (Razor Pages + Bootstrap/Chart.js), com login e UI sensível a papel.
+* Banco **Oracle** (Dapper), **importação/exportação JSON** e **gráfico mensal** Depósitos × Saques.
+* **KPI de risco mensal** (gastos do mês / renda) com alerta quando **> 30%**.
+
+---
+
+## 0) Visão — Solução & Aplicabilidade no Projeto
+
+**Ideia**
+GoldenGuard atua como um “painel financeiro” de conscientização e prevenção. Ele centraliza transações por usuário, identifica concentração de gastos ligados a apostas e calcula um **índice de risco mensal** comparando o total movimentado com a **renda declarada**.
+
+**Aplicabilidade prática (no contexto Golden Guard / FIAP)**
+
+* **Educação financeira**: dashboard e gráfico mensal mostram rapidamente padrões de depósitos/saques, facilitando conversas de orientação.
+* **Prevenção de risco**: o **KPI mensal** destaca quando os gastos ultrapassam **30% da renda**, servindo como sinal de alerta.
+* **Operação**:
+
+  * **Admin** cadastra usuários, importa extratos (JSON), registra transações e acompanha estatísticas.
+  * **Usuário** visualiza seu histórico e indicadores, fomentando a autoavaliação.
+* **Integração**: endpoints simples (REST + JWT) permitem ingestões futuras de CSV/PDF, ETL ou integrações com outros sistemas.
+* **Governança**: trilhas de auditoria (arquivo de log/audit) e separação de papéis, reduzindo exposição a dados sensíveis.
 
 ---
 
@@ -18,7 +36,7 @@ GoldenGuard.sln
 ├─ GoldenGuard/                     # Web API (Minimal API) 
 │  ├─ Endpoints/                    # Endpoints (Auth, Users, Transactions)
 │  ├─ Data/                         # OracleConnectionFactory, Scripts SQL (DDL/DML)
-│  └─ appsettings.json              # Conn string Oracle + JWT
+│  └─ appsettings.json              # JWT, etc. (sem credenciais do Oracle)
 │
 ├─ GoldenGuard.WebApp/              # Razor Pages (UI)
 │  ├─ Pages/                        # Index, Auth, Users, Transactions
@@ -30,7 +48,7 @@ GoldenGuard.sln
 └─ GoldenGuard.Application/         # Serviços de domínio (ex.: TransactionService)
 ```
 
-**Tecnologias principais**
+**Stack**
 
 * .NET 8, ASP.NET Core Minimal API e Razor Pages
 * Oracle + Dapper
@@ -41,56 +59,36 @@ GoldenGuard.sln
 
 ## 2) Banco de dados (Oracle)
 
-**Conexão (exemplo)** no `appsettings.json` da **API**:
+> ⚠️ **Sem credenciais no repositório.** A conexão do Oracle deve ser configurada via **User Secrets** (ou variável de ambiente).
+> Os **scripts** de criação/população estão em: `GoldenGuard/Data/Scripts.sql`.
 
-```json
-{
-  "ConnectionStrings": {
-    "Oracle": "User Id=GG;Password=SUASENHA;Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle.fiap.com.br)(PORT=1521))(CONNECT_DATA=(SID=ORCL)));"
-  }
-}
-```
-
-> Observações:
->
-> * **HOST** correto: `oracle.fiap.com.br` (evitar typos).
-> * **PORT**: `1521`, **SID**: `ORCL`.
-> * Não é necessário client Oracle instalado: usamos `Oracle.ManagedDataAccess.Core` (managed).
-
-**Tabelas principais** (resumo):
+**Tabelas principais**
 
 * `USERS (ID, NAME, EMAIL, MONTHLY_INCOME, CREATED_AT)`
 * `TRANSACTIONS (ID, USER_ID, OPERATOR, KIND, AMOUNT, OCCURRED_AT, RAW_LABEL, CREATED_AT)`
 * `USER_ACCOUNTS (ID, USER_ID, USERNAME, PASSWORD_HASH, ROLE, CREATED_AT)`
 
-> Senhas **apenas para desenvolvimento**; em produção use hash (ex.: BCrypt).
+**Dicas Dapper + Oracle**
 
-**Dica de mapeamento Dapper + Oracle**
-
-* Habilite `BindByName` nas conexões Oracle.
-* Em SELECTs, use **aliases** para casar nomes Oracle com propriedades C#:
-
-  ```sql
-  SELECT MONTHLY_INCOME AS MonthlyIncome FROM USERS ...
-  ```
-
-  ou ligue `Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;` (Program.cs da API).
+* Ative `BindByName = true` nas conexões Oracle.
+* Em SELECTs, use **aliases**: `MONTHLY_INCOME AS MonthlyIncome`, etc.
+  (ou ligue `Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true` no `Program.cs` da API).
 
 ---
 
 ## 3) Autenticação & papéis
 
-* **Login** via `/api/auth/login` (username/password) → retorna `{ token, role, userId }`.
+* `POST /api/auth/login` (username/password) → `{ token, role, userId }`.
 * Cookies no WebApp:
 
-  * `gg.jwt` (Bearer usado no ApiClient),
+  * `gg.jwt` (Bearer para o ApiClient),
   * `gg.role` (admin/user),
-  * `gg.userId` (usuário “ativo” na UI).
+  * `gg.userId` (usuário ativo na UI).
 
-**Acesso**
+**Regras**
 
-* Toda a rota `/api/users` exige **login**; criar/editar/excluir exigem **admin**.
-* Em `/api/transactions`, o grupo exige **login**; `POST/PUT/DELETE/import-json` exigem **admin**.
+* `/api/users`: login obrigatório; criar/editar/excluir = **admin**.
+* `/api/transactions`: login obrigatório; criar/editar/excluir/import = **admin**.
 
 ---
 
@@ -100,24 +98,24 @@ GoldenGuard.sln
 
 * `POST /api/auth/login`
   **Body**: `{ "username": "admin", "password": "123456" }`
-  **200**: `{ "token": "...", "role": "admin", "userId": 1 }`
+  **200** → `{ "token": "...", "role": "admin", "userId": 1 }`
 
 ### 4.2) Users
 
-* `GET /api/users` → lista usuários (auth)
-* `GET /api/users/{id}` → detalhe (auth)
-* `POST /api/users` → cria (admin)
-  **Body**: `{ "name": "...", "email": "...", "monthlyIncome": 4500 }`
-  **201**: `Location: /api/users/{id}`, body `{ "id": 123 }`
-* `PUT /api/users/{id}` → atualiza (admin)
-* `DELETE /api/users/{id}` → exclui (admin)
+* `GET /api/users` (auth) — lista
+* `GET /api/users/{id}` (auth) — detalhe
+* `POST /api/users` (admin) — cria
+  Body: `{ "name": "...", "email": "...", "monthlyIncome": 4500 }`
+  **201** com `Location` + corpo `{ "id": 123 }`
+* `PUT /api/users/{id}` (admin)
+* `DELETE /api/users/{id}` (admin)
 
 ### 4.3) Transactions
 
-* `GET /api/transactions/by-user/{userId}?from=...&to=...` → lista (auth)
-* `GET /api/transactions/{id}` → detalhe (auth)
-* `POST /api/transactions` → cria (admin)
-  **Body**:
+* `GET /api/transactions/by-user/{userId}?from=...&to=...` (auth) — listar
+* `GET /api/transactions/{id}` (auth) — detalhe
+* `POST /api/transactions` (admin) — cria
+  Body:
 
   ```json
   {
@@ -130,49 +128,32 @@ GoldenGuard.sln
   }
   ```
 
-  **201**: `Location: /api/transactions/{id}`, body `{ "id": 456 }`
-* `PUT /api/transactions/{id}` → atualiza (admin)
-* `DELETE /api/transactions/{id}` → exclui (admin)
+  **201** com `Location` + corpo `{ "id": 456 }`
+* `PUT /api/transactions/{id}` (admin)
+* `DELETE /api/transactions/{id}` (admin)
 
 #### Import/Export & Estatísticas
 
-* `POST /api/transactions/import-json` (admin) — importa uma lista de transações e grava snapshot JSON.
-* `GET /api/transactions/export-json/{userId}` (auth) — exporta as transações do usuário em JSON.
+* `POST /api/transactions/import-json` (admin) — importa lista e salva snapshot JSON.
+* `GET /api/transactions/export-json/{userId}` (auth) — exporta JSON do usuário.
 * `GET /api/transactions/risk/{userId}/{year}/{month}` (auth) → `{ ratioPercent, above30 }`
 * `GET /api/transactions/stats/monthly/{userId}?year=2025` (auth) →
   `[{ "YEAR_MONTH": "2025-01", "DEPOSITS": 650, "WITHDRAWALS": 120 }, ...]`
-
-> Na estatística mensal usamos binds **seguro** para Oracle (`:p_user_id`, `:p_year`) e `BindByName = true` para evitar `ORA-01745`.
+  (biding nomeado e `BindByName = true` para Oracle).
 
 ---
 
 ## 5) WebApp — UI & funcionalidades
 
-**Páginas principais**
+* `/Auth/Login`: login; define `gg.jwt`, `gg.role`, `gg.userId`.
+* `/`: **Dashboard** — gráfico (Chart.js) Depósitos × Saques do ano, KPI de risco e últimas transações.
+* `/Users`: lista (admin visualiza “Novo”/“Excluir”).
+* `/Users/Create`: cadastro (admin).
+* `/Transactions/ByUser`: filtro por usuário/intervalo; **admin** pode adicionar transações.
 
-* `/Auth/Login` — autenticação; ao logar, cookies `gg.jwt`, `gg.role`, `gg.userId` são definidos.
-* `/` (Dashboard) — mostra:
-
-  * **Gráfico** (Chart.js) de **Depósitos × Saques por mês** (consulta `/stats/monthly`).
-  * **KPI de risco** do mês (consulta `/risk/...`).
-  * **Transações recentes** do usuário ativo.
-* `/Users` — lista de usuários; admins veem “Novo” e “Excluir”.
-* `/Users/Create` — criação de usuário (admin).
-* `/Transactions/ByUser` — filtro por usuário/intervalo; admins podem **adicionar transações**.
-
-**Integração com a API**
-
-* O `ApiClient` injeta o **Bearer** a partir do cookie `gg.jwt`.
-* `appsettings.json` do WebApp deve conter a **URL absoluta** da API:
-
-  ```json
-  { "Api": { "BaseUrl": "https://localhost:7170" } }
-  ```
-
-**UI sensível a papel**
-
-* Elementos de criação/exclusão são exibidos só para **admin** (UX).
-* A **API** reforça a regra via policies (segurança real no backend).
+**Integração**
+O `ApiClient` lê `gg.jwt` dos cookies e envia `Authorization: Bearer ...` para a API.
+O WebApp usa `Api:BaseUrl` para montar as chamadas.
 
 ---
 
@@ -180,136 +161,91 @@ GoldenGuard.sln
 
 ### 6.1) Pré-requisitos
 
-* **Visual Studio 2022** (ou .NET SDK 8)
-* Oracle acessível (`oracle.fiap.com.br:1521`, `SID=ORCL`) e credenciais válidas
-* Pacotes NuGet (API):
+* **Visual Studio 2022** (ou .NET 8 SDK)
+* Acesso a Oracle (credenciais e host fornecidos pelo seu ambiente)
+* NuGet na **API**: `Oracle.ManagedDataAccess.Core`, `Dapper`, `Swashbuckle.AspNetCore`, `Microsoft.AspNetCore.Authentication.JwtBearer` **8.x**
+* NuGet no **WebApp**: padrão do template + seu `ApiClient`
 
-  * `Oracle.ManagedDataAccess.Core` (para .NET 8)
-  * `Dapper`
-  * `Swashbuckle.AspNetCore`
-  * `Microsoft.AspNetCore.Authentication.JwtBearer` **8.x** (não 9.x)
-* Pacotes NuGet (WebApp):
+### 6.2) Configuração de **segredos** (sem vazar conexão)
 
-  * `Microsoft.AspNetCore.Authentication.Cookies` (se usar)
-  * Nenhum adicional além dos padrões do template e do seu `ApiClient`
+> Use **User Secrets** no projeto **GoldenGuard (API)**. Não comite credenciais no repo.
 
-### 6.2) Configuração
+```bash
+# No diretório do projeto GoldenGuard (API):
+dotnet user-secrets init
 
-**API (`GoldenGuard/appsettings.json`)**
+# 1) Connection string do Oracle (use a conexão fornecida pelo seu ambiente)
+dotnet user-secrets set "ConnectionStrings:Oracle" "<SUA-CONNECTION-STRING-ORACLE>"
+
+# 2) Chave JWT (apenas DEV; em produção use Key Vault)
+dotnet user-secrets set "Jwt:Key" "uma-chave-bem-grande-e-segura-para-dev"
+
+# (Opcional) Issuer/Audience se quiser personalizar
+dotnet user-secrets set "Jwt:Issuer" "GoldenGuard"
+dotnet user-secrets set "Jwt:Audience" "GoldenGuard"
+```
+
+No **WebApp**, informe a URL da API (pode ficar no `appsettings.json` ou também em secrets):
 
 ```json
+// GoldenGuard.WebApp/appsettings.json
 {
-  "ConnectionStrings": {
-    "Oracle": "User Id=GG;Password=SUASENHA;Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle.fiap.com.br)(PORT=1521))(CONNECT_DATA=(SID=ORCL)));"
-  },
-  "Jwt": {
-    "Key": "uma-chave-bem-grande-e-segura-para-dev",
-    "Issuer": "GoldenGuard",
-    "Audience": "GoldenGuard"
-  },
-  "AllowedHosts": "*"
+  "Api": { "BaseUrl": "https://localhost:7170" }
 }
 ```
 
-**WebApp (`GoldenGuard.WebApp/appsettings.json`)**
+> Se a API rodar em outra porta/host, ajuste `BaseUrl`.
 
-```json
-{
-  "Logging": {
-    "LogLevel": { "Default": "Information", "Microsoft.AspNetCore": "Warning" }
-  },
-  "AllowedHosts": "*",
-  "Api": {
-    "BaseUrl": "https://localhost:7170"
-  }
-}
-```
+### 6.3) Banco de dados
 
-> Se a API subir em outra porta, ajuste `BaseUrl`.
+* Execute o script: `GoldenGuard/Data/Scripts.sql` no **schema** que a API usa.
 
-**Opcional — CORS (se consumir API via JS no browser)**
-Na API (Program.cs):
+### 6.4) Executar
 
-```csharp
-builder.Services.AddCors(o => o.AddPolicy("WebApp", p =>
-    p.WithOrigins("https://localhost:7275").AllowAnyHeader().AllowAnyMethod()));
-...
-app.UseCors("WebApp");
-```
+1. No VS, defina **Multiple startup projects**:
 
-### 6.3) Rodando
+   * `GoldenGuard` (API) → **Start**
+   * `GoldenGuard.WebApp` → **Start**
+2. **F5**:
 
-1. **Crie o schema**/tabelas no Oracle (use os scripts do projeto ou os seus).
-2. **Abra a solução no VS** → **Properties da Solution** → **Multiple startup projects**:
-
-   * `GoldenGuard` (API): **Start**
-   * `GoldenGuard.WebApp`: **Start**
-3. **F5**. Abra:
-
-   * API Swagger: `https://localhost:7170/swagger`
+   * Swagger da API: `https://localhost:7170/swagger`
    * WebApp: `https://localhost:7275/`
-4. **Login**: no WebApp, vá em `/Auth/Login` (ou use o Swagger `POST /api/auth/login`).
+3. **Login** no WebApp (`/Auth/Login`) — usuários de exemplo:
 
-   * Usuários demo típicos: `admin / 123456` (admin), `marcio / 123456` (user).
-5. Use o **Dashboard** e as páginas **Users**/**Transactions**.
+   * `admin / 123456` (admin)
+   * `marcio / 123456` (user)
 
 ---
 
 ## 7) Dicas de teste rápido
 
-* **Login via Swagger**:
-
-  1. `POST /api/auth/login` → pegue o `token`.
-  2. Clique em **Authorize** no Swagger → cole `Bearer <token>`.
-* **CRUD Users**:
-
-  * `POST /api/users` (admin) → cria; `GET /api/users` → lista; `DELETE /api/users/{id}` (admin) → exclui.
-* **Transactions**:
-
-  * `POST /api/transactions` (admin) → cria.
-  * `GET /api/transactions/by-user/{userId}` → lista.
-  * `GET /api/transactions/stats/monthly/{userId}?year=2025` → dados do gráfico.
+* **Swagger** → `POST /api/auth/login` → copie o `token` → **Authorize** → `Bearer <token>`.
+* **Users** → `POST /api/users` (admin) → `GET /api/users` → `DELETE /api/users/{id}`.
+* **Transactions** → `POST /api/transactions` (admin) → `GET /api/transactions/by-user/{id}` → `GET /api/transactions/stats/monthly/{id}?year=...`.
 
 ---
 
-## 8) Solução de problemas comuns
+## 8) Solução de problemas
 
-* **401 Unauthorized no WebApp**
-  → Token expirado/ausente. Faça login em `/Auth/Login`. O `ApiClient` usa o cookie `gg.jwt`.
-
-* **InvalidOperationException: BaseAddress must be set**
-  → No WebApp, configure `Api:BaseUrl` **absoluto** e registre o `HttpClient` com `BaseAddress`.
-
-* **ORA-12545 (não resolve host)**
-  → Host incorreto (verifique **oracle.fiap.com.br**), VPN/DNS e porta 1521.
-
-* **ORA-00942 (tabela/visão não existe)**
-  → Confirme o **schema** (usuário da conexão) e se as tabelas foram criadas ali.
-
-* **ORA-01745 (bind inválido)**
-  → Em Oracle, evite binds `:uid/:yy`; use `:p_user_id`, `:p_year` e `BindByName = true`.
-
-* **Renda mensal aparecendo 0**
-  → Garanta **aliases** nas colunas (`MONTHLY_INCOME AS MonthlyIncome`) ou ligue
-  `Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true`.
-
-* **Chart não carrega**
-  → Verifique o fetch JS (Authorization: Bearer do cookie), CORS na API e se o endpoint `/stats/monthly` está ok.
+* **401 no WebApp** → token ausente/expirado. Faça login em `/Auth/Login` (cookie `gg.jwt`).
+* **InvalidOperationException: BaseAddress must be set** → configure `Api:BaseUrl` no WebApp e registre o `HttpClient` com `BaseAddress`.
+* **ORA-00942** → crie as tabelas no **schema** correto (rode o `Scripts.sql`).
+* **ORA-01745** → use binds nomeados (`:p_user_id`, `:p_year`) e `BindByName = true`.
+* **Renda mensal “0”** → garanta aliases nos SELECTs (`MONTHLY_INCOME AS MonthlyIncome`) ou ligue `DefaultTypeMap.MatchNamesWithUnderscores`.
 
 ---
 
-## 9) Segurança (prod)
+## 9) Segurança (produção)
 
-* **NUNCA** versionar a `Jwt:Key`. Use **User Secrets**/KeyVault.
-* Use **hash de senha** (ex.: BCrypt) em `USER_ACCOUNTS`.
-* Logue apenas o necessário (cuidado com dados sensíveis).
-* Ative HTTPS obrigatório e políticas de CORS mínimas necessárias.
+* **NÃO** versionar `ConnectionStrings` e `Jwt:Key`. Use **User Secrets**/Key Vault/variáveis de ambiente.
+* Hash de senha em `USER_ACCOUNTS` (ex.: BCrypt).
+* Menor CORS possível, HTTPS obrigatório e logs sem dados sensíveis.
 
 ---
 
-## 10) Roadmap (ideias)
+## 10) Roadmap
 
-* Exportar CSV/PDF direto da UI.
-* Notificações por e-mail quando KPI de risco > 30%.
-* Multi-tenant / segregação de dados.
-* Auditoria mais detalhada com correlação (request id).
+* Upload/Parser de CSV/PDF direto na UI.
+* Alertas proativos quando KPI > 30%.
+* Multi-tenant / segregação por organização.
+* Auditoria expandida e relatórios.
