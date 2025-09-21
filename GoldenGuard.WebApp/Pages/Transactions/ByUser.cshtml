@@ -1,0 +1,140 @@
+﻿@page
+@model GoldenGuard.WebApp.Pages.Transactions.ByUserModel
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
+@{
+    ViewData["Title"] = "Transações";
+    var role = HttpContextAccessor.HttpContext?.Request.Cookies["gg.role"];
+    var isAdmin = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
+}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h4 m-0">Transações por Usuário</h1>
+    <a class="btn btn-outline-secondary" href="/Users">Gerenciar Usuários</a>
+</div>
+
+@if (TempData["msg"] is string m && !string.IsNullOrWhiteSpace(m))
+{
+    <div class="alert alert-info">@m</div>
+}
+
+<form method="get" class="row g-3 mb-3">
+    <div class="col-md-4">
+        <label class="form-label">Usuário</label>
+        <select class="form-select" name="UserId">
+            @foreach (var u in Model.Users)
+            {
+                <option value="@u.Id" selected="@(u.Id == Model.UserId)">@u.Name (@u.Email)</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label class="form-label">De</label>
+        <input class="form-control" type="datetime-local" name="From" value="@Model.From?.ToString("yyyy-MM-ddTHH:mm")" />
+    </div>
+    <div class="col-md-3">
+        <label class="form-label">Até</label>
+        <input class="form-control" type="datetime-local" name="To" value="@Model.To?.ToString("yyyy-MM-ddTHH:mm")" />
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+        <button class="btn btn-dark w-100" type="submit">Filtrar</button>
+    </div>
+</form>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card card-gg p-3">
+            <div class="small text-muted">Total de Depósitos</div>
+            <div class="h3 m-0">@Model.TotalDeposits.ToString("C")</div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card card-gg p-3">
+            <div class="small text-muted">Total de Saques</div>
+            <div class="h3 m-0">@Model.TotalWithdrawals.ToString("C")</div>
+        </div>
+    </div>
+</div>
+
+@if (isAdmin)
+{
+    <div class="card card-gg p-3 mb-4">
+        <div class="fw-semibold mb-2">Adicionar Transação</div>
+        <form method="post" asp-page-handler="Create" class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Tipo</label>
+                <select class="form-select" asp-for="NewKind">
+                    <option>DEPOSIT</option>
+                    <option>WITHDRAWAL</option>
+                    <option>OTHER</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Operador</label>
+                <input class="form-control" asp-for="NewOperator" placeholder="Ex.: PIX *BET365" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Valor</label>
+                <input class="form-control" asp-for="NewAmount" type="number" step="0.01" min="0" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Data/Hora</label>
+                <input class="form-control" asp-for="NewOccurredAt" type="datetime-local" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Usuário</label>
+                <select class="form-select" asp-for="NewUserId">
+                    @foreach (var u in Model.Users)
+                    {
+                        <option value="@u.Id" selected="@(u.Id == Model.UserId)">@u.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Rótulo original</label>
+                <input class="form-control" asp-for="NewRawLabel" placeholder="Texto do extrato" />
+            </div>
+            <div class="col-12">
+                <button class="btn btn-gg" type="submit">Adicionar</button>
+            </div>
+        </form>
+    </div>
+}
+
+<div class="table-responsive">
+    <table class="table align-middle">
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Operador</th>
+                <th>Tipo</th>
+                <th class="text-end">Valor</th>
+                <th>Rótulo</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in Model.Items)
+            {
+                <tr>
+                    <td>@t.OccurredAt.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>@t.Operator</td>
+                    <td>
+                        @if (t.Kind.Equals("DEPOSIT", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <span class="badge text-bg-primary">Depósito</span>
+                        }
+                        else if (t.Kind.Equals("WITHDRAWAL", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <span class="badge text-bg-secondary">Saque</span>
+                        }
+                        else
+                        {
+                            <span class="badge text-bg-light text-dark">Outro</span>
+                        }
+                    </td>
+                    <td class="text-end">@t.Amount.ToString("C")</td>
+                    <td>@t.RawLabel</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

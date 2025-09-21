@@ -1,0 +1,41 @@
+﻿@page
+@model GoldenGuard.WebApp.Pages.Users.CreateModel
+@{
+    ViewData["Title"] = "Novo Usuário";
+}
+
+<h1 class="h4 mb-3">Novo Usuário</h1>
+
+@if (TempData["msg"] is string msg && !string.IsNullOrWhiteSpace(msg))
+{
+    <div class="alert alert-warning">@msg</div>
+}
+
+<form method="post" class="row g-3">
+    <div class="col-12">
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    </div>
+
+    <div class="col-md-6">
+        <label asp-for="Data.Name" class="form-label">Nome</label>
+        <input asp-for="Data.Name" class="form-control" />
+        <span asp-validation-for="Data.Name" class="text-danger"></span>
+    </div>
+
+    <div class="col-md-6">
+        <label asp-for="Data.Email" class="form-label">E-mail</label>
+        <input asp-for="Data.Email" class="form-control" />
+        <span asp-validation-for="Data.Email" class="text-danger"></span>
+    </div>
+
+    <div class="col-md-4">
+        <label asp-for="Data.MonthlyIncome" class="form-label">Renda Mensal</label>
+        <input asp-for="Data.MonthlyIncome" class="form-control" type="number" step="0.01" min="0" />
+        <span asp-validation-for="Data.MonthlyIncome" class="text-danger"></span>
+    </div>
+
+    <div class="col-12">
+        <button class="btn btn-gg" type="submit">Salvar</button>
+        <a class="btn btn-outline-secondary" href="/Users">Cancelar</a>
+    </div>
+</form>

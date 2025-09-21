@@ -1,0 +1,33 @@
+:root {
+    --gg-navy: #042646;
+    --gg-gold: #D4AF37;
+}
+
+
+.btn-gg {
+    background: var(--gg-gold);
+    border: none;
+    color: #1a1a1a;
+}
+
+.badge-gg {
+    background: var(--gg-gold);
+    color: #1a1a1a;
+}
+
+.card-gg {
+    border-top: 4px solid var(--gg-gold);
+}
+
+.progress-bar-gg {
+    background: var(--gg-gold);
+}
+
+
+.kpi {
+    min-height: 116px;
+}
+
+.table thead th {
+    background: #f6f6f6;
+}

@@ -1,6 +1,7 @@
 ﻿using GoldenGuard.Domain.DTOs;
 using GoldenGuard.Domain.Entities;
 using GoldenGuard.Infrastructure.Repositories;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace GoldenGuard.Endpoints;
 
@@ -8,45 +9,68 @@ public static class UsersEndpoints
 {
     public static IEndpointRouteBuilder MapUsers(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/users").WithTags("Users");
+        // Grupo /api/users protegido: precisa estar autenticado (qualquer papel)
+        var group = app.MapGroup("/api/users")
+                       .WithTags("Users")
+                       .RequireAuthorization();
 
-        group.MapGet("/", async (IUserRepository repo) => Results.Ok(await repo.ListAsync()));
+        // LISTAR
+        group.MapGet("/", async (IUserRepository repo) =>
+        {
+            var users = await repo.ListAsync();
+            return TypedResults.Ok(users);
+        });
 
-        group.MapGet("/{id:long}", async (long id, IUserRepository repo) =>
+        // OBTER POR ID
+        group.MapGet("/{id:long}", async Task<Results<Ok<UserProfile>, NotFound>> (long id, IUserRepository repo) =>
         {
             var user = await repo.GetAsync(id);
-            return user is null ? Results.NotFound() : Results.Ok(user);
+            return user is null ? TypedResults.NotFound() : TypedResults.Ok(user);
         });
 
-        group.MapPost("/", async (CreateUserDto dto, IUserRepository repo) =>
+        // CRIAR (somente admin)
+        group.MapPost("/", async Task<Results<Created, BadRequest<string>>> (CreateUserDto dto, IUserRepository repo) =>
         {
+            if (string.IsNullOrWhiteSpace(dto.Name)) return TypedResults.BadRequest("Name é obrigatório.");
+            if (string.IsNullOrWhiteSpace(dto.Email)) return TypedResults.BadRequest("Email é obrigatório.");
+            if (dto.MonthlyIncome < 0) return TypedResults.BadRequest("MonthlyIncome não pode ser negativo.");
+
             var id = await repo.CreateAsync(new UserProfile
             {
-                Name = dto.Name,
-                Email = dto.Email,
+                Name = dto.Name.Trim(),
+                Email = dto.Email.Trim(),
                 MonthlyIncome = dto.MonthlyIncome
             });
-            return Results.Created($"/api/users/{id}", new { id });
-        });
 
-        group.MapPut("/{id:long}", async (long id, UpdateUserDto dto, IUserRepository repo) =>
+            return TypedResults.Created($"/api/users/{id}");
+        })
+        .RequireAuthorization("Admin");
+
+        // ATUALIZAR (somente admin)
+        group.MapPut("/{id:long}", async Task<Results<NoContent, NotFound, BadRequest<string>>> (long id, UpdateUserDto dto, IUserRepository repo) =>
         {
             var existing = await repo.GetAsync(id);
-            if (existing is null) return Results.NotFound();
+            if (existing is null) return TypedResults.NotFound();
 
-            existing.Name = dto.Name ?? existing.Name;
-            existing.Email = dto.Email ?? existing.Email;
+            if (dto.MonthlyIncome is < 0)
+                return TypedResults.BadRequest("MonthlyIncome não pode ser negativo.");
+
+            existing.Name = dto.Name?.Trim() ?? existing.Name;
+            existing.Email = dto.Email?.Trim() ?? existing.Email;
             existing.MonthlyIncome = dto.MonthlyIncome ?? existing.MonthlyIncome;
 
             var ok = await repo.UpdateAsync(id, existing);
-            return ok ? Results.NoContent() : Results.BadRequest();
-        });
+            return ok ? TypedResults.NoContent() : TypedResults.BadRequest("Falha ao atualizar.");
+        })
+        .RequireAuthorization("Admin");
 
-        group.MapDelete("/{id:long}", async (long id, IUserRepository repo) =>
+        // EXCLUIR (somente admin)
+        group.MapDelete("/{id:long}", async Task<Results<NoContent, NotFound>> (long id, IUserRepository repo) =>
         {
             var ok = await repo.DeleteAsync(id);
-            return ok ? Results.NoContent() : Results.NotFound();
-        });
+            return ok ? TypedResults.NoContent() : TypedResults.NotFound();
+        })
+        .RequireAuthorization("Admin");
 
         return app;
     }

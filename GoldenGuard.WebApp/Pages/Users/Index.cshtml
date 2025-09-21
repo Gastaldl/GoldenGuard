@@ -1,0 +1,65 @@
+﻿@page
+@model GoldenGuard.WebApp.Pages.Users.IndexModel
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
+@{
+    ViewData["Title"] = "Usuários";
+    var role = HttpContextAccessor.HttpContext?.Request.Cookies["gg.role"];
+    var isAdmin = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
+}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h4 m-0">Usuários</h1>
+    @if (isAdmin)
+    {
+        <a class="btn btn-gg" href="/Users/Create">Novo Usuário</a>
+    }
+</div>
+
+@if (TempData["msg"] is string m && !string.IsNullOrWhiteSpace(m))
+{
+    <div class="alert alert-info">@m</div>
+}
+
+@if (Model.Users.Count == 0)
+{
+    <div class="alert alert-warning">Nenhum usuário encontrado.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th class="text-end">Renda Mensal</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in Model.Users)
+                {
+                    <tr>
+                        <td>@u.Id</td>
+                        <td>@u.Name</td>
+                        <td>@u.Email</td>
+                        <td class="text-end">@u.MonthlyIncome.ToString("C")</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-dark" href="/Transactions/ByUser?userId=@u.Id">Transações</a>
+
+                            @if (isAdmin)
+                            {
+                                <form method="post" class="d-inline" asp-page-handler="Delete"
+                                      onsubmit="return confirm('Excluir @u.Name?');">
+                                    <input type="hidden" asp-for="DeleteId" value="@u.Id" />
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">Excluir</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

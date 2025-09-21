@@ -1,0 +1,165 @@
+﻿@page
+@model GoldenGuard.WebApp.Pages.IndexModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 m-0">Dashboard</h1>
+    @if (Model.UserId is not null)
+    {
+        <a class="btn btn-gg" href="/Transactions/ByUser?userId=@Model.UserId">Ver todas as transações</a>
+    }
+</div>
+
+<form method="get" class="row g-3 mb-3">
+    <div class="col-md-4">
+        <label class="form-label">Usuário</label>
+        <select class="form-select" name="UserId">
+            @foreach (var u in Model.Users)
+            {
+                <option value="@u.Id" selected="@(u.Id == Model.UserId)">@u.Name (@u.Email)</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Ano</label>
+        <input class="form-control" name="Year" type="number" value="@Model.Year" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Mês</label>
+        <input class="form-control" name="Month" type="number" min="1" max="12" value="@Model.Month" />
+    </div>
+    <div class="col-md-4 d-flex align-items-end">
+        <button class="btn btn-dark w-100" type="submit">Atualizar</button>
+    </div>
+</form>
+
+@if (Model.Users.Count == 0)
+{
+    <div class="alert alert-warning">Nenhum usuário cadastrado. Vá em <a href="/Users">Usuários</a> e crie o primeiro.</div>
+}
+else
+{
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card card-gg kpi p-3">
+                <div class="small text-muted">% do mês em apostas</div>
+                <div class="display-6 fw-bold">@Model.Ratio.ToString("0.##")%</div>
+                <div class="progress mt-2" role="progressbar" aria-valuenow="@Model.Ratio" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar progress-bar-gg" style="width:@Math.Min(100, (int)Math.Round(Model.Ratio))%"></div>
+                </div>
+                <div class="mt-2">
+                    @if (Model.Above30)
+                    {
+                        <span class="badge text-bg-danger">Acima de 30% • risco elevado</span>
+                    }
+                    else
+                    {
+
+                        <span class="badge text-bg-success">Abaixo de 30% • dentro do limite</span>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card card-gg p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="small text-muted">Recomendações</div>
+                    <span class="badge badge-gg">Educação & Proteção</span>
+                </div>
+                <ul class="mt-2 mb-0">
+                    <li>Reveja seu orçamento mensal e defina um limite de gasto para apostas.</li>
+                    <li>Se ultrapassar 30%, considere pausar depósitos por 7 dias.</li>
+                    <li>Assista a conteúdos curtos sobre jogo responsável e rotas de ajuda.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="card card-gg mt-4 p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">Depósitos x Saques por mês</div>
+        </div>
+        <canvas id="mxChart" height="120"></canvas>
+    </div>
+
+    <div class="card card-gg mt-4 p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">Últimas transações do mês</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Operador</th>
+                        <th>Tipo</th>
+                        <th class="text-end">Valor</th>
+                        <th>Rótulo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in Model.RecentTx)
+                    {
+                        <tr>
+                            <td>@t.OccurredAt.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@t.Operator</td>
+                            <td>
+                                @if (t.Kind.Equals("DEPOSIT", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="badge text-bg-primary">Depósito</span>
+                                }
+                                else if (t.Kind.Equals("WITHDRAWAL", StringComparison.OrdinalIgnoreCase))
+                                {
+
+                                    <span class="badge text-bg-secondary">Saque</span>
+                                }
+                                else
+                                {
+
+                                    <span class="badge text-bg-light text-dark">Outro</span>
+                                }
+                            </td>
+                            <td class="text-end">@t.Amount.ToString("C")</td>
+                            <td>@t.RawLabel</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+          // Dados injetados pelo servidor (seguro: cookie HttpOnly não é acessado pelo JS)
+          const data = @Html.Raw(Model.MonthlyJson);
+
+          // Se a API ainda não tem dados para o ano/usuário, evita erro
+          const labels = data.map(r => r.YEAR_MONTH);
+          const dep = data.map(r => r.DEPOSITS);
+          const saq = data.map(r => r.WITHDRAWALS);
+
+          const ctx = document.getElementById('mxChart');
+          if (!ctx) return;
+
+          new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels,
+              datasets: [
+                { label: 'Depósitos', data: dep },
+                { label: 'Saques', data: saq }
+              ]
+            },
+            options: {
+              responsive: true,
+              scales: { y: { beginAtZero: true } }
+            }
+          });
+        })();
+    </script>
+}
