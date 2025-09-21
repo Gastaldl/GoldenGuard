@@ -15,7 +15,7 @@ O sistema entrega:
 **Ideia**
 GoldenGuard atua como um “painel financeiro” de conscientização e prevenção. Ele centraliza transações por usuário, identifica concentração de gastos ligados a apostas e calcula um **índice de risco mensal** comparando o total movimentado com a **renda declarada**.
 
-**Aplicabilidade prática (no contexto Golden Guard / FIAP)**
+**Aplicabilidade prática**
 
 * **Educação financeira**: dashboard e gráfico mensal mostram rapidamente padrões de depósitos/saques, facilitando conversas de orientação.
 * **Prevenção de risco**: o **KPI mensal** destaca quando os gastos ultrapassam **30% da renda**, servindo como sinal de alerta.
