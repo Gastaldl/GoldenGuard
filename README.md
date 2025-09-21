@@ -221,25 +221,6 @@ O WebApp usa `Api:BaseUrl` para montar as chamadas.
 * NuGet na **API**: `Oracle.ManagedDataAccess.Core`, `Dapper`, `Swashbuckle.AspNetCore`, `Microsoft.AspNetCore.Authentication.JwtBearer` **8.x**
 * NuGet no **WebApp**: padrão do template + seu `ApiClient`
 
-### 6.2) Configuração de **segredos** (sem vazar conexão)
-
-> Use **User Secrets** no projeto **GoldenGuard (API)**. Não comite credenciais no repo.
-
-```bash
-# No diretório do projeto GoldenGuard (API):
-dotnet user-secrets init
-
-# 1) Connection string do Oracle (use a conexão fornecida pelo seu ambiente)
-dotnet user-secrets set "ConnectionStrings:Oracle" "<SUA-CONNECTION-STRING-ORACLE>"
-
-# 2) Chave JWT (apenas DEV; em produção use Key Vault)
-dotnet user-secrets set "Jwt:Key" "uma-chave-bem-grande-e-segura-para-dev"
-
-# (Opcional) Issuer/Audience se quiser personalizar
-dotnet user-secrets set "Jwt:Issuer" "GoldenGuard"
-dotnet user-secrets set "Jwt:Audience" "GoldenGuard"
-```
-
 No **WebApp**, informe a URL da API (pode ficar no `appsettings.json` ou também em secrets):
 
 ```json
@@ -251,11 +232,11 @@ No **WebApp**, informe a URL da API (pode ficar no `appsettings.json` ou também
 
 > Se a API rodar em outra porta/host, ajuste `BaseUrl`.
 
-### 6.3) Banco de dados
+### 6.2) Banco de dados
 
 * Execute o script: `GoldenGuard/Data/Scripts.sql` no **schema** que a API usa.
 
-### 6.4) Executar
+### 6.3) Executar
 
 1. No VS, defina **Multiple startup projects**:
 
