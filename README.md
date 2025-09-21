@@ -1,12 +1,5 @@
 # GoldenGuard — Web API + WebApp (.NET 8, Oracle, JWT)
 
-## Integrantes
-
-* Márcio Gastaldi - RM98811
-* Arthur Bessa Pian - RM99215
-* Davi Desenzi - RM550849
-* João Victor - RM551410
-
 **GoldenGuard** é uma solução de **educação financeira e prevenção de risco**, voltada a monitorar e analisar movimentações (depósitos/saques) associadas a plataformas de aposta/fintechs.
 O sistema entrega:
 
@@ -14,6 +7,13 @@ O sistema entrega:
 * **WebApp** (Razor Pages + Bootstrap/Chart.js), com login e UI sensível a papel.
 * Banco **Oracle** (Dapper), **importação/exportação JSON** e **gráfico mensal** Depósitos × Saques.
 * **KPI de risco mensal** (gastos do mês / renda) com alerta quando **> 30%**.
+
+## Integrantes
+
+* Márcio Gastaldi - RM98811
+* Arthur Bessa Pian - RM99215
+* Davi Desenzi - RM550849
+* João Victor - RM551410
 
 ---
 
