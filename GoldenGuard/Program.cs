@@ -12,26 +12,29 @@ using Microsoft.OpenApi.Models;
 var builder = WebApplication.CreateBuilder(args);
 var cfg = builder.Configuration;
 
-// ===== EF Core (Oracle) =====
+// ========== EF Core (Oracle) ==========
 builder.Services.AddDbContext<GgDbContext>(opt =>
     opt.UseOracle(cfg.GetConnectionString("Oracle")));
 
-// ===== DI =====
+// ========== DI ==========
 builder.Services.AddScoped<IUserRepository, EfUserRepository>();
 builder.Services.AddScoped<ITransactionRepository, EfTransactionRepository>();
-builder.Services.AddSingleton<FileStorageService>();
 builder.Services.AddScoped<TransactionService>();
+builder.Services.AddSingleton<FileStorageService>();
 
-// ===== CORS =====
+// ========== CORS (WebApp -> API) ==========
+var allowedOrigins = cfg.GetSection("Cors:AllowedOrigins").Get<string[]>() ??
+                     new[] { "https://localhost:7275", "https://goldenguard-web.azurewebsites.net" };
+
 builder.Services.AddCors(opt =>
 {
     opt.AddPolicy("WebApp", p =>
-        p.WithOrigins("https://localhost:7275") // porta do GoldenGuard.WebApp
+        p.WithOrigins(allowedOrigins)
          .AllowAnyHeader()
          .AllowAnyMethod());
 });
 
-// ===== Swagger =====
+// ========== Swagger ==========
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -64,10 +67,13 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// ===== JWT =====
-var jwtSection = builder.Configuration.GetSection("Jwt");
-var key = Encoding.UTF8.GetBytes(jwtSection["Key"]!);
+// ========== JWT ==========
+var jwtSection = cfg.GetSection("Jwt");
+var jwtKey = jwtSection["Key"];
+if (string.IsNullOrWhiteSpace(jwtKey))
+    throw new InvalidOperationException("Jwt:Key não configurado. Defina em appsettings ou Application Settings do App Service.");
 
+var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
@@ -80,7 +86,7 @@ builder.Services
             ValidateLifetime = true,
             ValidIssuer = jwtSection["Issuer"],
             ValidAudience = jwtSection["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(key),
+            IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
         };
     });
 
@@ -89,31 +95,48 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("Admin", p => p.RequireRole("admin"));
 });
 
+builder.Services.AddProblemDetails();
+
 var app = builder.Build();
 
-// ===== Pipeline =====
+// ========== Pipeline ==========
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
     app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
 }
+else
+{
+    app.UseHsts();
+}
 
 app.UseHttpsRedirection();
 
-// Habilita CORS para chamadas do WebApp (antes dos endpoints)
+// CORS antes dos endpoints
 app.UseCors("WebApp");
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Prepara pastas de arquivos locais (JSON/TXT)
+// aplicar migrations automaticamente na subida da API
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<GgDbContext>();
+    db.Database.Migrate();
+}
+catch
+{
+}
+
+// Pastas para arquivos locais (JSON/TXT)
 var fs = app.Services.GetRequiredService<FileStorageService>();
 await fs.EnsureFoldersAsync();
 
-// ===== Endpoints =====
-app.MapAuth();          // /api/auth/login  -> Atualize para usar GgDbContext (EF)
-app.MapUsers();         // /api/users       -> Repositórios EF
-app.MapTransactions();  // /api/transactions (+ /risk e /stats/monthly) -> EF/LINQ
+// ========== Endpoints ==========
+app.MapAuth();          // /api/auth/login  (agora usando EF no AuthEndpoints)
+app.MapUsers();         // /api/users       (repositórios EF)
+app.MapTransactions();  // /api/transactions (+ /risk e /stats/monthly via EF/LINQ)
 
 app.Run();
