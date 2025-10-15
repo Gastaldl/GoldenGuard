@@ -1,11 +1,10 @@
-﻿using Dapper;
-using GoldenGuard.Application.Services;
+﻿using GoldenGuard.Application.Services;
 using GoldenGuard.Data;
 using GoldenGuard.Domain.DTOs;
 using GoldenGuard.Domain.Entities;
 using GoldenGuard.Infrastructure.Repositories;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Oracle.ManagedDataAccess.Client;
+using Microsoft.EntityFrameworkCore;
 
 namespace GoldenGuard.Endpoints;
 
@@ -18,17 +17,16 @@ public static class TransactionsEndpoints
 
     public static IEndpointRouteBuilder MapTransactions(this IEndpointRouteBuilder app)
     {
-        // Todo o grupo exige estar autenticado
         var group = app.MapGroup("/api/transactions")
                        .WithTags("Transactions")
                        .RequireAuthorization();
 
-        // LISTAR por usuário (autenticado)
+        // LISTAR por usuário
         group.MapGet("/by-user/{userId:long}",
             async (long userId, DateTime? from, DateTime? to, ITransactionRepository repo)
                 => TypedResults.Ok(await repo.ListByUserAsync(userId, from, to)));
 
-        // OBTER por ID (autenticado)
+        // OBTER por ID
         group.MapGet("/{id:long}",
             async Task<Results<Ok<Transaction>, NotFound>> (long id, ITransactionRepository repo) =>
             {
@@ -36,7 +34,7 @@ public static class TransactionsEndpoints
                 return tx is null ? TypedResults.NotFound() : TypedResults.Ok(tx);
             });
 
-        // CRIAR (somente admin)
+        // CRIAR (admin)
         group.MapPost("/",
             async Task<Results<Created<object>, BadRequest<string>>> (
                 CreateTransactionDto dto,
@@ -57,14 +55,12 @@ public static class TransactionsEndpoints
                 });
 
                 await files.AppendAuditAsync($"CREATE TX id={id} user={dto.UserId} amount={dto.Amount}");
-
-                // Força o payload para object para casar com Created<object>
                 object payload = new { id };
                 return TypedResults.Created($"/api/transactions/{id}", payload);
             })
             .RequireAuthorization("Admin");
 
-        // ATUALIZAR (somente admin)
+        // ATUALIZAR (admin)
         group.MapPut("/{id:long}",
             async Task<Results<NoContent, NotFound, BadRequest<string>>> (
                 long id,
@@ -91,7 +87,7 @@ public static class TransactionsEndpoints
             })
             .RequireAuthorization("Admin");
 
-        // EXCLUIR (somente admin)
+        // EXCLUIR (admin)
         group.MapDelete("/{id:long}",
             async Task<Results<NoContent, NotFound>> (
                 long id,
@@ -104,7 +100,7 @@ public static class TransactionsEndpoints
             })
             .RequireAuthorization("Admin");
 
-        // IMPORT JSON (somente admin)
+        // IMPORT JSON (admin)
         group.MapPost("/import-json",
             async Task<Results<Ok<ImportJsonResult>, BadRequest<string>>> (
                 List<CreateTransactionDto> items,
@@ -132,13 +128,13 @@ public static class TransactionsEndpoints
                     inserted++;
                 }
 
-                await files.WriteJsonAsync(items); // snapshot
+                await files.WriteJsonAsync(items);
                 await files.AppendAuditAsync($"IMPORT JSON count={inserted}");
                 return TypedResults.Ok(new ImportJsonResult(inserted));
             })
             .RequireAuthorization("Admin");
 
-        // EXPORT JSON por usuário (autenticado)
+        // EXPORT JSON por usuário
         group.MapGet("/export-json/{userId:long}",
             async (long userId, ITransactionRepository repo, FileStorageService files) =>
             {
@@ -148,7 +144,7 @@ public static class TransactionsEndpoints
                 return TypedResults.Ok(txs);
             });
 
-        // MÉTRICA DE RISCO (autenticado)
+        // KPI de risco (Application Service)
         group.MapGet("/risk/{userId:long}/{year:int}/{month:int}",
             async (long userId, int year, int month, TransactionService service) =>
             {
@@ -160,33 +156,25 @@ public static class TransactionsEndpoints
                 });
             });
 
-        // ESTATÍSTICA MENSAL (autenticado) — para o gráfico (Chart.js)
+        // 📊 Estatística mensal (LINQ/EF) para Chart.js
         group.MapGet("/stats/monthly/{userId:long}",
-            async (long userId, int? year, IOracleConnectionFactory factory) =>
+            async (long userId, int? year, GgDbContext db) =>
             {
                 var y = year ?? DateTime.UtcNow.Year;
-                using var conn = factory.Create();
 
-                // Habilita BindByName quando for OracleConnection
-                if (conn is OracleConnection oc) oc.BindByName = true;
+                var rows = await db.Transactions
+                    .AsNoTracking()
+                    .Where(t => t.UserId == userId && t.OccurredAt.Year == y)
+                    .GroupBy(t => new { t.OccurredAt.Year, t.OccurredAt.Month })
+                    .Select(g => new
+                    {
+                        YEAR_MONTH = $"{g.Key.Year:D4}-{g.Key.Month:D2}",
+                        DEPOSITS = g.Where(x => x.Kind.ToUpper() == "DEPOSIT").Sum(x => x.Amount),
+                        WITHDRAWALS = g.Where(x => x.Kind.ToUpper() == "WITHDRAWAL").Sum(x => x.Amount)
+                    })
+                    .OrderBy(x => x.YEAR_MONTH)
+                    .ToListAsync();
 
-                var sql = @"
-                    WITH M AS (
-                      SELECT TRUNC(OCCURRED_AT, 'MM') AS YM,
-                             SUM(CASE WHEN UPPER(KIND) = 'DEPOSIT'    THEN AMOUNT ELSE 0 END) AS DEPOSITS,
-                             SUM(CASE WHEN UPPER(KIND) = 'WITHDRAWAL' THEN AMOUNT ELSE 0 END) AS WITHDRAWALS
-                      FROM TRANSACTIONS
-                      WHERE USER_ID = :p_user_id
-                        AND EXTRACT(YEAR FROM OCCURRED_AT) = :p_year
-                      GROUP BY TRUNC(OCCURRED_AT, 'MM')
-                    )
-                    SELECT TO_CHAR(YM, 'YYYY-MM') AS YEAR_MONTH,
-                           NVL(DEPOSITS,0) AS DEPOSITS,
-                           NVL(WITHDRAWALS,0) AS WITHDRAWALS
-                    FROM M
-                    ORDER BY YM";
-
-                var rows = await conn.QueryAsync(sql, new { p_user_id = userId, p_year = y });
                 return TypedResults.Ok(rows);
             });
 

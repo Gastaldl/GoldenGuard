@@ -9,7 +9,6 @@ public static class UsersEndpoints
 {
     public static IEndpointRouteBuilder MapUsers(this IEndpointRouteBuilder app)
     {
-        // Grupo /api/users protegido: precisa estar autenticado (qualquer papel)
         var group = app.MapGroup("/api/users")
                        .WithTags("Users")
                        .RequireAuthorization();
@@ -28,8 +27,8 @@ public static class UsersEndpoints
             return user is null ? TypedResults.NotFound() : TypedResults.Ok(user);
         });
 
-        // CRIAR (somente admin)
-        group.MapPost("/", async Task<Results<Created, BadRequest<string>>> (CreateUserDto dto, IUserRepository repo) =>
+        // CRIAR (admin)
+        group.MapPost("/", async Task<Results<Created<object>, BadRequest<string>>> (CreateUserDto dto, IUserRepository repo) =>
         {
             if (string.IsNullOrWhiteSpace(dto.Name)) return TypedResults.BadRequest("Name é obrigatório.");
             if (string.IsNullOrWhiteSpace(dto.Email)) return TypedResults.BadRequest("Email é obrigatório.");
@@ -42,11 +41,12 @@ public static class UsersEndpoints
                 MonthlyIncome = dto.MonthlyIncome
             });
 
-            return TypedResults.Created($"/api/users/{id}");
+            object payload = new { id };
+            return TypedResults.Created($"/api/users/{id}", payload);
         })
         .RequireAuthorization("Admin");
 
-        // ATUALIZAR (somente admin)
+        // ATUALIZAR (admin)
         group.MapPut("/{id:long}", async Task<Results<NoContent, NotFound, BadRequest<string>>> (long id, UpdateUserDto dto, IUserRepository repo) =>
         {
             var existing = await repo.GetAsync(id);
@@ -64,7 +64,7 @@ public static class UsersEndpoints
         })
         .RequireAuthorization("Admin");
 
-        // EXCLUIR (somente admin)
+        // EXCLUIR (admin)
         group.MapDelete("/{id:long}", async Task<Results<NoContent, NotFound>> (long id, IUserRepository repo) =>
         {
             var ok = await repo.DeleteAsync(id);
