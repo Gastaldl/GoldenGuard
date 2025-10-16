@@ -5,6 +5,7 @@ using GoldenGuard.Endpoints;
 using GoldenGuard.Infrastructure.Repositories;
 using GoldenGuard.WebApi.Endpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -97,14 +98,35 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddProblemDetails();
 
+// Recomendado no Azure (proxy envia X-Forwarded-Proto/For)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
+
+var enableSwagger = builder.Configuration.GetValue<bool>("Swagger:Enable");
 var app = builder.Build();
 
 // ========== Pipeline ==========
-if (app.Environment.IsDevelopment())
+
+// Sempre exponha health-check simples
+app.MapGet("/healthz", () => Results.Ok(new { ok = true, env = app.Environment.EnvironmentName }))
+   .ExcludeFromDescription();
+
+// Raiz básica (substituída por redirect se Swagger estiver ativo)
+app.MapGet("/", () => Results.Ok(new { service = "GoldenGuard API", status = "running" }))
+   .ExcludeFromDescription();
+
+app.UseForwardedHeaders();
+
+if (app.Environment.IsDevelopment() || enableSwagger)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
+
+    // Redireciona raiz para o Swagger quando habilitado
+    app.MapGet("/", () => Results.Redirect("/swagger"))
+       .ExcludeFromDescription();
 }
 else
 {
@@ -112,14 +134,11 @@ else
 }
 
 app.UseHttpsRedirection();
-
-// CORS antes dos endpoints
 app.UseCors("WebApp");
-
 app.UseAuthentication();
 app.UseAuthorization();
 
-// aplicar migrations automaticamente na subida da API
+// Aplicar migrations automaticamente (se houver)
 try
 {
     using var scope = app.Services.CreateScope();
@@ -128,6 +147,7 @@ try
 }
 catch
 {
+    // Em produção registre o log; aqui seguimos sem travar a aplicação.
 }
 
 // Pastas para arquivos locais (JSON/TXT)
@@ -135,8 +155,8 @@ var fs = app.Services.GetRequiredService<FileStorageService>();
 await fs.EnsureFoldersAsync();
 
 // ========== Endpoints ==========
-app.MapAuth();          // /api/auth/login  (agora usando EF no AuthEndpoints)
-app.MapUsers();         // /api/users       (repositórios EF)
-app.MapTransactions();  // /api/transactions (+ /risk e /stats/monthly via EF/LINQ)
+app.MapAuth();          // /api/auth/login
+app.MapUsers();         // /api/users
+app.MapTransactions();  // /api/transactions (+ /risk e /stats/monthly)
 
 app.Run();
