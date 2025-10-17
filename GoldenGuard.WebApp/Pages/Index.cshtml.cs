@@ -22,6 +22,18 @@ public class IndexModel : PageModel
 
     public List<ApiClient.TransactionDto> RecentTx { get; private set; } = new();
 
+    // ===== Conversor (GET form) =====
+    [BindProperty(SupportsGet = true)] public string FxFrom { get; set; } = "USD";
+    [BindProperty(SupportsGet = true)] public string FxTo { get; set; } = "BRL";
+    [BindProperty(SupportsGet = true)] public decimal? FxAmount { get; set; }
+    public decimal? FxRate { get; private set; }
+    public decimal? FxResult { get; private set; }
+    public string? FxDate { get; private set; }
+
+    // ===== Notícias =====
+    [BindProperty(SupportsGet = true)] public string? NewsQuery { get; set; } = "apostas";
+    public List<ApiClient.NewsItem> News { get; private set; } = new();
+
     // JSON que alimenta o Chart.js no front (mensal depósitos x saques)
     public string MonthlyJson { get; private set; } = "[]";
 
@@ -68,6 +80,22 @@ public class IndexModel : PageModel
             // 6) Estatística mensal (depósitos x saques) para o gráfico
             var monthly = await _api.GetMonthlyAsync(uid, year);
             MonthlyJson = JsonSerializer.Serialize(monthly);
+
+            // 7) Conversor de moedas (chama apenas se houver amount >= 0)
+            FxRate = null; FxResult = null; FxDate = null;
+            if (FxAmount.HasValue && FxAmount.Value >= 0)
+            {
+                var conv = await _api.ConvertAsync(FxFrom, FxTo, FxAmount.Value);
+                if (conv is not null)
+                {
+                    FxRate = conv.rate;
+                    FxResult = conv.result;
+                    FxDate = conv.date;
+                }
+            }
+
+            // 8) Notícias (não exige auth na API, mas mantém o fluxo)
+            News = await _api.GetNewsAsync(NewsQuery, pageSize: 5);
 
             return Page();
         }

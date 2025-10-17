@@ -41,7 +41,6 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "GoldenGuard API", Version = "v1" });
 
-    // Suporte a "Authorize" com Bearer JWT no Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -72,7 +71,7 @@ builder.Services.AddSwaggerGen(c =>
 var jwtSection = cfg.GetSection("Jwt");
 var jwtKey = jwtSection["Key"];
 if (string.IsNullOrWhiteSpace(jwtKey))
-    throw new InvalidOperationException("Jwt:Key não configurado. Defina em appsettings ou Application Settings do App Service.");
+    throw new InvalidOperationException("Jwt:Key não configurado.");
 
 var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
 builder.Services
@@ -98,20 +97,61 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddProblemDetails();
 
-// Recomendado no Azure (proxy envia X-Forwarded-Proto/For)
+builder.Services.AddHttpClient("rates", c =>
+{
+    c.BaseAddress = new Uri(builder.Configuration["Integrations:ExchangeRateBaseUrl"]
+                            ?? "https://api.exchangerate.host");
+    c.Timeout = TimeSpan.FromSeconds(10);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("GoldenGuard/1.0");
+});
+
+builder.Services.AddHttpClient("news", c =>
+{
+    c.BaseAddress = new Uri(builder.Configuration["NewsApi:BaseUrl"]
+                            ?? "https://newsapi.org/v2");
+    c.Timeout = TimeSpan.FromSeconds(10);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("GoldenGuard/1.0");
+});
+
+builder.Services.AddHttpClient("openai", c =>
+{
+    // use api.openai.com por padrão; se for Azure OpenAI, mude BaseUrl e headers lá
+    c.BaseAddress = new Uri(builder.Configuration["OpenAI:BaseUrl"]
+                            ?? "https://api.openai.com");
+    c.Timeout = TimeSpan.FromSeconds(30);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("GoldenGuard/1.0");
+});
+
+// Proxy do Azure
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 });
 
-var enableSwagger = builder.Configuration.GetValue<bool>("Swagger:Enable");
+var enableSwagger = cfg.GetValue<bool>("Swagger:Enable", false);
+var migrateOnStartup = cfg.GetValue<bool>("Ef:MigrateOnStartup", false);
+
 var app = builder.Build();
 
-// ========== Pipeline ==========
-
-// Sempre exponha health-check simples
+// ========== Rotas de saúde sempre ativas ==========
 app.MapGet("/healthz", () => Results.Ok(new { ok = true, env = app.Environment.EnvironmentName }))
    .ExcludeFromDescription();
+
+// Teste de banco sob demanda (não roda no startup)
+app.MapGet("/health/db", async (GgDbContext db) =>
+{
+    try
+    {
+        var can = await db.Database.CanConnectAsync();
+        return can
+            ? Results.Ok(new { db = "ok" })
+            : Results.Problem("Não conectou ao Oracle", statusCode: 500);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(title: "Falha ao conectar ao Oracle", detail: ex.Message, statusCode: 500);
+    }
+}).ExcludeFromDescription();
 
 // Raiz básica (substituída por redirect se Swagger estiver ativo)
 app.MapGet("/", () => Results.Ok(new { service = "GoldenGuard API", status = "running" }))
@@ -123,10 +163,7 @@ if (app.Environment.IsDevelopment() || enableSwagger)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-
-    // Redireciona raiz para o Swagger quando habilitado
-    app.MapGet("/", () => Results.Redirect("/swagger"))
-       .ExcludeFromDescription();
+    app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
 }
 else
 {
@@ -138,25 +175,32 @@ app.UseCors("WebApp");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Aplicar migrations automaticamente (se houver)
-try
+// NÃO migre automaticamente sem rede liberada (controlado por setting)
+if (migrateOnStartup)
 {
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<GgDbContext>();
-    db.Database.Migrate();
-}
-catch
-{
-    // Em produção registre o log; aqui seguimos sem travar a aplicação.
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GgDbContext>();
+        await db.Database.MigrateAsync();
+    }
+    catch (Exception ex)
+    {
+        // log suave e segue a vida
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+        logger.LogWarning(ex, "Falha ao aplicar migrations na inicialização (Ef:MigrateOnStartup=true).");
+    }
 }
 
-// Pastas para arquivos locais (JSON/TXT)
+// Pastas p/ arquivos locais
 var fs = app.Services.GetRequiredService<FileStorageService>();
 await fs.EnsureFoldersAsync();
 
 // ========== Endpoints ==========
-app.MapAuth();          // /api/auth/login
-app.MapUsers();         // /api/users
-app.MapTransactions();  // /api/transactions (+ /risk e /stats/monthly)
+app.MapAuth();
+app.MapUsers();
+app.MapTransactions();
+app.MapIntegrations();  // /api/integrations/*
+app.MapInsights();      // /api/insights/*
 
 app.Run();

@@ -56,7 +56,6 @@ else
                     }
                     else
                     {
-
                         <span class="badge text-bg-success">Abaixo de 30% • dentro do limite</span>
                     }
                 </div>
@@ -113,12 +112,10 @@ else
                                 }
                                 else if (t.Kind.Equals("WITHDRAWAL", StringComparison.OrdinalIgnoreCase))
                                 {
-
                                     <span class="badge text-bg-secondary">Saque</span>
                                 }
                                 else
                                 {
-
                                     <span class="badge text-bg-light text-dark">Outro</span>
                                 }
                             </td>
@@ -130,15 +127,124 @@ else
             </table>
         </div>
     </div>
+
+    <!-- Conversor de Moedas -->
+    <div class="card card-gg mt-4 p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">Conversor de Moedas (via exchangerate.host)</div>
+        </div>
+
+        <form method="get" class="row g-2">
+            <!-- Preserva filtros atuais -->
+            <input type="hidden" name="UserId" value="@Model.UserId" />
+            <input type="hidden" name="Year" value="@Model.Year" />
+            <input type="hidden" name="Month" value="@Model.Month" />
+            <input type="hidden" name="NewsQuery" value="@Model.NewsQuery" />
+
+            <div class="col-md-2">
+                <label class="form-label">De</label>
+                <select class="form-select" name="FxFrom">
+                    @foreach (var ccy in new[] { "USD", "BRL", "EUR", "GBP", "ARS", "CLP" })
+                    {
+                        <option value="@ccy" selected="@(ccy == Model.FxFrom)">@ccy</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Para</label>
+                <select class="form-select" name="FxTo">
+                    @foreach (var ccy in new[] { "BRL", "USD", "EUR", "GBP", "ARS", "CLP" })
+                    {
+                        <option value="@ccy" selected="@(ccy == Model.FxTo)">@ccy</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Valor</label>
+                <input class="form-control" type="number" step="0.01" name="FxAmount"
+                       value="@(Model.FxAmount?.ToString(System.Globalization.CultureInfo.InvariantCulture))" />
+            </div>
+
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-dark w-100" type="submit">Converter</button>
+            </div>
+
+            <div class="col-md-3 d-flex align-items-end">
+                @if (Model.FxResult.HasValue && Model.FxRate.HasValue)
+                {
+                    <div class="alert alert-info w-100 m-0">
+                        <div class="small text-muted">@Model.FxFrom → @Model.FxTo (@Model.FxDate)</div>
+                        <div class="fw-semibold">
+                            @Model.FxAmount @Model.FxFrom = @Model.FxResult @Model.FxTo
+                        </div>
+                        <div class="small">Taxa: @Model.FxRate</div>
+                    </div>
+                }
+            </div>
+        </form>
+    </div>
+
+    <!-- Notícias -->
+    <div class="card card-gg mt-4 p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">Notícias (apostas/finanças)</div>
+        </div>
+
+        <form method="get" class="row g-2 mb-2">
+            <!-- Preserva filtros e conversor -->
+            <input type="hidden" name="UserId" value="@Model.UserId" />
+            <input type="hidden" name="Year" value="@Model.Year" />
+            <input type="hidden" name="Month" value="@Model.Month" />
+            <input type="hidden" name="FxFrom" value="@Model.FxFrom" />
+            <input type="hidden" name="FxTo" value="@Model.FxTo" />
+            <input type="hidden" name="FxAmount" value="@(Model.FxAmount?.ToString(System.Globalization.CultureInfo.InvariantCulture))" />
+
+            <div class="col-md-9">
+                <input class="form-control" type="text" name="NewsQuery" value="@Model.NewsQuery"
+                       placeholder="Buscar (ex.: apostas, bet365, finanças)" />
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-outline-secondary w-100" type="submit">Atualizar</button>
+            </div>
+        </form>
+
+        @if (Model.News.Count == 0)
+        {
+            <div class="text-muted small">Sem resultados. Configure a chave <code>NewsApi:ApiKey</code> na API e tente novamente.</div>
+        }
+        else
+        {
+            <ul class="list-group list-group-flush">
+                @foreach (var n in Model.News)
+                {
+                    <li class="list-group-item">
+                        <div class="fw-semibold">
+                            @if (!string.IsNullOrWhiteSpace(n.url))
+                            {
+                                <a href="@n.url" target="_blank" rel="noopener">@n.title</a>
+                            }
+                            else
+                            {
+                                @n.title
+                            }
+                        </div>
+                        <div class="small text-muted">
+                            @n.source • @(n.publishedAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "")
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
 }
 
 @section Scripts {
     <script>
         (() => {
-          // Dados injetados pelo servidor (seguro: cookie HttpOnly não é acessado pelo JS)
-          const data = @Html.Raw(Model.MonthlyJson);
+          const data = @Html.Raw(string.IsNullOrWhiteSpace(Model.MonthlyJson) ? "[]" : Model.MonthlyJson);
 
-          // Se a API ainda não tem dados para o ano/usuário, evita erro
           const labels = data.map(r => r.YEAR_MONTH);
           const dep = data.map(r => r.DEPOSITS);
           const saq = data.map(r => r.WITHDRAWALS);

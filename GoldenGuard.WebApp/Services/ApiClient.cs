@@ -76,6 +76,32 @@ public sealed class ApiClient
     public sealed record LoginDto(string Username, string Password);
     public sealed record LoginResult(string token, string role, long userId);
 
+    // ===== INTEGRATIONS =====
+    public sealed record ConvertResult(string? from, string? to, decimal? amount, decimal? rate, decimal? result, string? date);
+    public sealed record NewsItem(string? title, string? source, DateTime? publishedAt, string? url);
+
+    public async Task<ConvertResult?> ConvertAsync(string from, string to, decimal amount)
+    {
+        // Não precisa de auth, mas não atrapalha
+        EnsureAuthHeader();
+        var url = $"/api/integrations/rates/convert?from={Uri.EscapeDataString(from)}&to={Uri.EscapeDataString(to)}&amount={amount}";
+        var resp = await _http.GetAsync(url);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<ConvertResult>();
+    }
+
+    public async Task<List<NewsItem>> GetNewsAsync(string? query = "apostas", int pageSize = 5)
+    {
+        EnsureAuthHeader();
+        var q = string.IsNullOrWhiteSpace(query) ? "apostas" : query.Trim();
+        var url = $"/api/integrations/news?query={Uri.EscapeDataString(q)}&pageSize={pageSize}";
+        var resp = await _http.GetAsync(url);
+        if (!resp.IsSuccessStatusCode) return new();
+        // O endpoint já devolve [{title, source, publishedAt, url}]
+        var arr = await resp.Content.ReadFromJsonAsync<List<NewsItem>>();
+        return arr ?? new();
+    }
+
     // AUTH
     public async Task<LoginResult?> LoginAsync(string username, string password)
     {
