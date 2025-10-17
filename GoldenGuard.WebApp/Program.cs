@@ -10,7 +10,7 @@ builder.Services.AddHttpClient<GoldenGuard.WebApp.Services.ApiClient>((sp, http)
     var baseUrl = cfg["Api:BaseUrl"];
 
     if (string.IsNullOrWhiteSpace(baseUrl))
-        throw new InvalidOperationException("Config faltando: Api:BaseUrl no appsettings.json");
+        throw new InvalidOperationException("Config faltando: Api:BaseUrl no appsettings.json!");
 
     // tolera se alguém colocar sem esquema
     if (!baseUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
