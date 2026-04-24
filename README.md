@@ -9,13 +9,6 @@ O sistema entrega:
 * **KPI de risco mensal** (gastos do mês / renda) com alerta quando **> 30%**.
 * **Integrações externas**: conversão de câmbio (ExchangeRate), manchetes (NewsAPI) e **resumo consultivo (OpenAI)**.
 
-## Integrantes
-
-* Márcio Gastaldi — RM98811
-* Arthur Bessa Pian — RM99215
-* Davi Desenzi — RM550849
-* João Victor — RM551410
-
 ---
 
 ## 0) Visão — Solução & Aplicabilidade no Projeto
